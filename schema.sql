@@ -20,10 +20,14 @@ create table if not exists goals (
   target numeric not null,
   saved numeric default 0,
   interest_rate numeric default 0,
+  emoji text,
+  deadline date,
   created_at timestamptz default now()
 );
 
 alter table goals add column if not exists interest_rate numeric default 0;
+alter table goals add column if not exists emoji text;
+alter table goals add column if not exists deadline date;
 
 create table if not exists debts (
   id uuid primary key default gen_random_uuid(),
