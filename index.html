@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#fff7e6" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="description" content="teen micro-finance. cash only. rupees. no banks, no upi, just notes." />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<title>MahMoney — Teen Micro Finance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="authOverlay" class="overlay">
+    <div class="card auth-card tilt">
+      <h1>💸 MahMoney</h1>
+      <p class="muted">teen micro-finance. cash only. rupees. no banks, no upi, just notes.</p>
+      <div id="authSetup" class="hidden">
+        <h2>make a password</h2>
+        <p class="muted small">first time here. pick something you'll remember (stored on this device).</p>
+        <input id="setupPw" type="password" placeholder="new password" />
+        <input id="setupPw2" type="password" placeholder="repeat" />
+        <button id="setupBtn" class="btn primary">let's go →</button>
+      </div>
+      <div id="authLogin" class="hidden">
+        <h2>unlock</h2>
+        <input id="loginPw" type="password" placeholder="password" />
+        <button id="loginBtn" class="btn primary">open →</button>
+        <button id="forgotBtn" class="btn ghost small">forgot? reset password (data stays)</button>
+      </div>
+      <p id="authMsg" class="msg"></p>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div class="brand">💸 MahMoney</div>
+      <div class="top-actions">
+        <span id="modeBadge" class="badge"></span>
+        <button id="lockBtn" class="icon-btn" title="Lock">🔒</button>
+      </div>
+    </header>
+
+    <main id="viewContainer"></main>
+
+    <nav class="bottomnav">
+      <button data-view="home" class="nav-btn active">🏠<span>home</span></button>
+      <button data-view="add" class="nav-btn">➕<span>add</span></button>
+      <button data-view="goals" class="nav-btn">🎯<span>goals</span></button>
+      <button data-view="owe" class="nav-btn">🤝<span>owe</span></button>
+      <button data-view="txns" class="nav-btn">📜<span>txns</span></button>
+      <button data-view="more" class="nav-btn">⚙️<span>more</span></button>
+    </nav>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="config.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
