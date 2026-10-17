@@ -180,3 +180,10 @@ canvas { width: 100%; height: auto; display: block; }
 
 .hand { font-family: "Caveat", cursive; font-size: 22px; }
 .opacity-60 { opacity: .55; }
+
+/* v2.1: hide the Netlify deploy badge if it gets injected */
+.netlify-badge,
+#netlify-badge,
+[data-netlify-badge] { display: none !important; }
+
+.goal-block { transform: none; }

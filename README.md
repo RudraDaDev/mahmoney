@@ -30,6 +30,13 @@ See `schema.sql` in this folder.
 ### Security note
 RLS is disabled in schema.sql (anon can read/write). This is intentional per request ("doesn't matter if hacked"). Do NOT store sensitive data.
 
+## v2.1 changes
+- Goals merged into Home (standalone goals tab removed)
+- Pocket-money → goal auto-save pipeline (`syncAutoGoals`): a configurable % of every pocket-money drop moves straight into a goal
+- Service worker: HTML is network-first (always-fresh app shell), other assets stay cache-first
+- Netlify deploy badge hidden via CSS
+- Goals table: two new columns — `emoji` and `deadline`
+
 ## v2 features
 - Charts: spending by category (donut) + last 7 days (bars), plain canvas, no libs
 - Bills & reminders: due dates, monthly-repeating ones roll forward automatically

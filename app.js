@@ -102,7 +102,6 @@ async function render() {
   try {
     if (currentView === "home") await renderHome(c);
     else if (currentView === "add") renderAdd(c);
-    else if (currentView === "goals") await renderGoals(c);
     else if (currentView === "owe") await renderOwe(c);
     else if (currentView === "txns") await renderTxns(c);
     else if (currentView === "more") await renderMore(c);
@@ -155,6 +154,9 @@ async function renderHome(c) {
       ${monthExpense > budget ? `<div class="msg" style="display:block">Over budget by ${money(monthExpense - budget)}!</div>` : ""}
     </div>` : "";
 
+  // goals (merged into Home in v2.1)
+  const goalsHtml = await goalsSectionHtml();
+
   // reminders due soon / overdue
   const reminders = await list("reminders");
   const today = new Date().toISOString().slice(0, 10);
@@ -181,6 +183,7 @@ async function renderHome(c) {
     </div>
     ${budgetHtml}
     ${remHtml}
+    ${goalsHtml}
     <div class="stat-grid">
       <div class="stat"><div class="label">Total in</div><div class="value pos">${money(income)}</div></div>
       <div class="stat"><div class="label">Total out</div><div class="value neg">${money(expense)}</div></div>
@@ -208,6 +211,8 @@ async function renderHome(c) {
 
   // cash count logic
   setupCashCount(c, balance);
+  // goals handlers
+  bindGoals(c);
   // charts
   drawPie(c.querySelector("#pieChart"), txs, ym);
   drawBars(c.querySelector("#barChart"), txs);
@@ -498,6 +503,8 @@ function renderAdd(c) {
       });
       toast("Saved!");
     }
+    // pocket-money → goal auto-save pipeline
+    await syncAutoGoals();
     $("#txAmount").value = "";
     $("#txNote").value = "";
     const tg = $("#txTags"); if (tg) tg.value = "";
@@ -507,70 +514,113 @@ function renderAdd(c) {
   });
 }
 
-// ---------- Goals ----------
-async function renderGoals(c) {
+// ---------- Goals (merged into Home in v2.1) ----------
+const AUTOSAVE_KEY = "autosave";
+function autosaveSettings() {
+  const a = sget("autosave", { enabled: true, pct: 20, goal_id: null });
+  if (typeof a.pct !== "number" || isNaN(a.pct)) a.pct = 20;
+  if (typeof a.enabled !== "boolean") a.enabled = true;
+  return a;
+}
+
+function goalCardHtml(g) {
+  const pct = Math.min(100, Math.round((Number(g.saved) / Number(g.target)) * 100));
+  const done = Number(g.saved) >= Number(g.target);
+  const r = Number(g.interest_rate || 0);
+  let proj = "";
+  if (r > 0 && Number(g.saved) > 0) {
+    const after12 = Number(g.saved) * Math.pow(1 + r / 100, 12);
+    proj = `<div class="sub">📈 at ${r}%/month → ${money(after12)} in 12 months</div>`;
+  }
+  const bits = [money(g.saved) + " / " + money(g.target)];
+  if (r > 0) bits.push(r + "%/mo");
+  if (g.deadline) bits.push("due " + fmtDate(g.deadline));
+  return `
+  <div class="card-block goal-block">
+    <div class="item" style="background:none;padding:0">
+      <div class="left">
+        <div class="title">${g.emoji ? escapeHtml(g.emoji) + " " : ""}${escapeHtml(g.name)} ${done ? "✅" : ""}</div>
+        <div class="sub">${bits.join(" · ")}</div>
+      </div>
+      <div class="actions">
+        <button data-addgoal="${g.id}" title="Add savings">➕</button>
+        <button data-delgoal="${g.id}" title="Delete">🗑️</button>
+      </div>
+    </div>
+    <div class="progress"><div style="width:${pct}%"></div></div>
+    <div class="sub" style="margin-top:4px">${pct}%${proj}</div>
+  </div>`;
+}
+
+async function goalsSectionHtml() {
   const goals = await list("goals");
   const listHtml = goals.length
-    ? goals.map((g) => {
-        const pct = Math.min(100, Math.round((Number(g.saved) / Number(g.target)) * 100));
-        const done = Number(g.saved) >= Number(g.target);
-        const r = Number(g.interest_rate || 0);
-        let proj = "";
-        if (r > 0 && Number(g.saved) > 0) {
-          const after12 = Number(g.saved) * Math.pow(1 + r / 100, 12);
-          proj = `<div class="sub">📈 at ${r}%/month → ${money(after12)} in 12 months</div>`;
-        }
-        return `
-        <div class="card-block">
-          <div class="item" style="background:none;padding:0">
-            <div class="left">
-              <div class="title">${escapeHtml(g.name)} ${done ? "✅" : ""}</div>
-              <div class="sub">${money(g.saved)} / ${money(g.target)} ${r > 0 ? `· ${r}%/mo` : ""}</div>
-            </div>
-            <div class="actions">
-              <button data-addgoal="${g.id}" title="Add savings">➕</button>
-              <button data-delgoal="${g.id}" title="Delete">🗑️</button>
-            </div>
-          </div>
-          <div class="progress"><div style="width:${pct}%"></div></div>
-          <div class="sub" style="margin-top:4px">${pct}% ${proj}</div>
-        </div>`;
-      }).join("")
+    ? goals.map(goalCardHtml).join("")
     : `<div class="empty">No goals yet. Create one below.</div>`;
 
-  c.innerHTML = `
+  const as = autosaveSettings();
+  const goalOptions = goals
+    .map((g) => `<option value="${g.id}" ${g.id === as.goal_id ? "selected" : ""}>${escapeHtml(g.name)}</option>`)
+    .join("");
+
+  return `
+    <div class="section-title">🎯 Goals</div>
     <div class="card-block">
       <div class="section-title" style="margin-top:0">New goal</div>
       <div class="form-group"><label>Name</label><input id="gName" placeholder="e.g. New cycle" /></div>
-      <div class="form-group"><label>Target (₹)</label><input id="gTarget" type="number" min="1" placeholder="5000" /></div>
-      <div class="form-group"><label>Interest (% per month, optional)</label><input id="gRate" type="number" min="0" step="0.1" placeholder="0" /></div>
+      <div class="row">
+        <div class="form-group"><label>Target (₹)</label><input id="gTarget" type="number" min="1" placeholder="5000" /></div>
+        <div class="form-group"><label>Emoji (opt)</label><input id="gEmoji" maxlength="4" placeholder="🚲" /></div>
+      </div>
+      <div class="row">
+        <div class="form-group"><label>Interest (%/mo, opt)</label><input id="gRate" type="number" min="0" step="0.1" placeholder="0" /></div>
+        <div class="form-group"><label>Deadline (opt)</label><input id="gDeadline" type="date" /></div>
+      </div>
       <button id="saveGoal" class="btn primary">Create goal</button>
     </div>
-    ${listHtml}
-  `;
+    <div class="card-block">
+      <div class="section-title" style="margin-top:0">💸 Pocket-money auto-save</div>
+      <div class="form-group"><label><input id="asEnabled" type="checkbox" ${as.enabled ? "checked" : ""} /> auto-save part of every pocket money into a goal</label></div>
+      <div class="row">
+        <div class="form-group"><label>% of pocket money</label><input id="asPct" type="number" min="0" max="100" value="${as.pct}" /></div>
+        <div class="form-group"><label>Goal</label><select id="asGoal"><option value="">first unfinished goal</option>${goalOptions}</select></div>
+      </div>
+      <button id="saveAs" class="btn primary">Save auto-save</button>
+      <p class="muted small">Each pocket-money drop auto-moves this % into the goal. Real cash still moves by hand — the app tracks it.</p>
+    </div>
+    ${listHtml}`;
+}
 
-  $("#saveGoal").addEventListener("click", async () => {
-    const name = $("#gName").value.trim();
-    const target = Number($("#gTarget").value);
-    const rate = Number($("#gRate").value) || 0;
-    if (!name) { toast("Enter a name"); return; }
-    if (!target || target <= 0) { toast("Enter target"); return; }
-    await insert("goals", { name, target, saved: 0, interest_rate: rate });
-    toast("Goal created!");
-    render();
-  });
-
+function bindGoals(c) {
+  const saveGoal = c.querySelector("#saveGoal");
+  if (saveGoal) {
+    saveGoal.addEventListener("click", async () => {
+      const name = c.querySelector("#gName").value.trim();
+      const target = Number(c.querySelector("#gTarget").value);
+      const rate = Number(c.querySelector("#gRate").value) || 0;
+      if (!name) { toast("Enter a name"); return; }
+      if (!target || target <= 0) { toast("Enter target"); return; }
+      await insert("goals", {
+        name,
+        target,
+        saved: 0,
+        interest_rate: rate,
+        emoji: c.querySelector("#gEmoji").value.trim() || null,
+        deadline: c.querySelector("#gDeadline").value || null,
+      });
+      toast("Goal created!");
+      render();
+    });
+  }
   c.querySelectorAll("[data-addgoal]").forEach((b) => {
     b.addEventListener("click", async () => {
       const id = b.dataset.addgoal;
       const amtStr = prompt("Add how much to this goal? (₹)");
       const amt = Number(amtStr);
       if (!amt || amt <= 0) return;
-      const goals = await list("goals");
-      const g = goals.find((x) => x.id === id);
+      const g = (await list("goals")).find((x) => x.id === id);
       if (!g) return;
       await update("goals", id, { saved: Number(g.saved) + amt });
-      // also record as expense? optional: record transaction out for savings
       toast("Added to goal!");
       render();
     });
@@ -583,6 +633,47 @@ async function renderGoals(c) {
       render();
     });
   });
+  const saveAs = c.querySelector("#saveAs");
+  if (saveAs) {
+    saveAs.addEventListener("click", () => {
+      sset("autosave", {
+        enabled: c.querySelector("#asEnabled").checked,
+        pct: Number(c.querySelector("#asPct").value) || 0,
+        goal_id: c.querySelector("#asGoal").value || null,
+      });
+      toast("Auto-save saved");
+      syncAutoGoals().then(() => render());
+    });
+  }
+}
+
+// ---------- Pocket-money → goal auto-save pipeline ----------
+async function syncAutoGoals() {
+  const as = autosaveSettings();
+  if (!as.enabled) return;
+  const pct = Number(as.pct) || 0;
+  if (pct <= 0) return;
+  const goals = await list("goals");
+  if (!goals.length) return;
+  const doneIds = sget("autosave_done", []);
+  const txs = await list("transactions");
+  const pending = txs.filter(
+    (t) => t.type === "in" && (t.category || "").toLowerCase() === "pocket money" && !doneIds.includes(t.id)
+  );
+  if (!pending.length) return;
+  const target = goals.find((g) => g.id === as.goal_id) || goals.find((g) => Number(g.saved) < Number(g.target)) || goals[0];
+  let moved = 0;
+  for (const t of pending) {
+    const amt = (Number(t.amount) * pct) / 100;
+    if (amt > 0) {
+      moved += amt;
+      target.saved = Number(target.saved) + amt;
+      await update("goals", target.id, { saved: target.saved });
+    }
+    doneIds.push(t.id);
+  }
+  sset("autosave_done", doneIds.slice(-1000));
+  toast(`Auto-saved ${money(moved)} to "${target.name}" 🎯`);
 }
 
 // ---------- Owe ----------
@@ -950,6 +1041,7 @@ async function runRecurring() {
   const ok = await initAuth();
   if (ok) {
     await runRecurring();
+    await syncAutoGoals();
     render();
   }
 })();
